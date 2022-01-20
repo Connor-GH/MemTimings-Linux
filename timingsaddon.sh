@@ -24,10 +24,10 @@ GDM=$(sudo ./timings smu 0x50201 | sed -sn 3p | sed 's/ //g' | cut -c 53-54)
 tCWL=$(sudo ./timings smu 0x50215 | sed -sn 3p | sed 's/ //g' | cut -c 59-65)
 
 
-	if [ $(echo "$((2#$GDM))") -eq "10" ]; then
-	printf "GDM:\t\t$BDisabled$W\t\t"
+	if [ "$((2#$GDM))" -eq "2" ]; then
+	printf "GDM:\t\t${B}Enabled${W}\t\t"
 	else
-	printf "GDM:\t\t$BEnabled$W\t\t"
+	printf "GDM:\t\t${B}Disabled${W}\t\t"
 	fi
 	printf "tCWL:\t\t$B$((2#$tCWL))$W\n\n"
 
