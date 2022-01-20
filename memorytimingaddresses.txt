@@ -1,0 +1,101 @@
+0x50200, 0x50201 , 0x50202 , 0x50203
+{
+MCLK: bits 7-0 (value * 100 / 3)MHz)
+CMD_Rate: bits 11-9 (0b10 is 2T, 0b00 is 1T)
+GDM: bits 12-11
+}
+
+
+0x50204, 0x50205 , 0x50206 , 0x50207
+{
+tCL: bits 6-0			values that start at 0 should be grepped with 80 ending and normal - 1 for beginning
+tRAS: bits 15-8
+tRCDRD: bits 22-16
+tRCDWR: bits 30-24
+}
+
+
+0x50208, 0x50209 , 0x5020a , 0x5020b
+{
+tRC: bits 8-0
+tRP: bits 22-16
+}
+
+
+0x5020c, 0x5020d , 0x5020e , 0x5020f
+{
+tRRDS: bits 5-0
+tRRDL: bits 13-8
+tRTP: bits 29-24
+}
+
+
+0x50210, 0x50211 , 0x50212 , 0x50213
+{
+tFAW: bits 7-0
+}
+
+
+0x50214, 0x50215 , 0x50216 , 0x50217
+{
+tCWL: bits 6-0
+tWTRs: bits 13-8
+tWTRL: bits 23-16
+}
+
+
+0x50218, 0x50219 , 0x5021a , 0x5021b
+{
+tWR: bits 7-0
+}
+
+
+0x50220, 0x50221 , 0x50222 , 0x50223
+{
+tRDRDDD: bits 4-0
+tRDRDSD: bits 12-8
+tRDRDSC: bits 20-16
+tRDRDSCL: bits 28-24 (Read SCL)
+}
+
+
+0x50224, 0x50225 , 0x50226 , 0x50227
+{
+tWRWRDD: bits 4-0
+tWRWRSD: bits 12-8
+tWRWRSC: bits 20-16
+tWRWRSCL: bits 30-24 {Write SCL)
+}
+
+
+0x50228, 0x50229 , 0x5022a , 0x5022b
+{
+twRRD: bits 4-0
+tRDWR: bits 13-8
+}
+
+
+0x50230, 0x50231 , 0x50232 , 0x50233
+{
+tREFI: bits 16-0
+}
+
+
+0x50234
+{
+tMOD: bits 14-8
+}
+
+
+0x50254
+{
+tCKE: bits 29-24
+}
+
+
+0x50260, 0x50261 , 0x50262 , 0x50263
+{
+tRFC1: bits 11-0
+tRFC2: bits 22-11
+tRFC4: bits 32-22
+}
