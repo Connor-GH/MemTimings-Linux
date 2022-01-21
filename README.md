@@ -8,8 +8,7 @@ It works by using Cyring's SMU address reader, and parsing the
 binary strings into memory timing numbers.
 Cyring's Github: https://github.com/cyring
 Zentiming's Github: https://github.com/irusanov/ZenTimings
-
-
+<img src="https://i.imgur.com/sm2VGuO.png" alt="MemTimings1" align="right" height="387px">
 ## To install:
 * ``git clone https://github.com/Connor-GH/MemTimings-Linux``
 * ``cd MemTimings-Linux-main/``
