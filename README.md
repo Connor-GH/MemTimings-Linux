@@ -1,4 +1,7 @@
 # MemTimings-Linux
+![](https://github.com/Connor-GH/MemTimings-Linux/blob/main/logo.png?raw=true)
+
+
 Find your memory Timings of a Ryzen Zen2+ cpu under linux!
 **Important** **Your binary needs to be called "timings", otherwise, have a fun time using** 
 **sed to replace the word "timings" with the name that you chose**
