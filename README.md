@@ -16,4 +16,4 @@ Zentiming's Github: https://github.com/irusanov/ZenTimings
 * ``git clone https://github.com/Connor-GH/MemTimings-Linux``
 * ``cd MemTimings-Linux-main/``
 * ``gcc -o timings timings.c``
-* ``./timingsaddon``
+* ``./timingsaddon.sh``
