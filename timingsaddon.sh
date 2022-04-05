@@ -16,7 +16,7 @@ tRDRDSCL=$(sudo ./timings smu 0x50221 | sed -sn 3p | sed 's/ //g' | cut -c 37-40
 
 	printf "MCLK:\t\t$B$(expr $((2#$MCLK)) \* 200 / 3)$W\t\ttRDRDSCL:\t$B$((2#$tRDRDSCL))$W\n"
 
-CMD_RATE=$(sudo ./timings smu 0x50201 | sed -sn 3p | sed 's/ //g' | cut -c 54-56)
+CMD_RATE=$(sudo ./timings smu 0x50201 | sed -sn 3p | sed 's/ //g' | cut -c 55-56)
 tWRWRSCL=$(sudo ./timings smu 0x50225 | sed -sn 3p | sed 's/ //g' | cut -c 35-40)
 	printf "CMD:\t\t$B$((2#$CMD_RATE))T$W\t\ttWRWRSCL:\t$B$((2#$tWRWRSCL))$W\n"
 
