@@ -680,12 +680,11 @@ void UMC_Read(union DATA *data, unsigned int _addr)
 
 			__asm__ volatile
 			(
-			"DECODER:"				"\n\t"
 				"xorl	%%edx, %%edx"		"\n\t"
 				"bsrl	%[base], %%ecx" 	"\n\t"
 				"jz	1f"			"\n\t"
 				"incl	%%edx"			"\n\t"
-				"shll	%%ecx, %%edx"	 	"\n\t"
+				"shll	%%cl, %%edx"	 	"\n\t"
 				"negl	%%edx"			"\n\t"
 				"notl	%%edx"			"\n\t"
 				"andl	$0xfffffffe, %%edx"	"\n\t"
