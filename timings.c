@@ -19,6 +19,12 @@
 #include <sys/io.h>
 #include <unistd.h>
 
+#ifdef __clang__
+#define NONNULL _Nonnull
+#else
+#define NONNULL
+#endif
+
 // Format found in AMD Ryzen 15H BKDG (BIOS and Kernel Developer's Guide)
 // Under "IO Space Registers", and IOCF8.
 // IOCF8 (0xCF8) is the config address, and IOCFC (0xCFC) is the data port.
@@ -81,8 +87,8 @@
     }                                                                          \
   while (0)
 
-static void smu_read(uint32_t *dword, unsigned int addr) {
-  dbg_printf("SMU_Read (%08x, %08x)\n", addr, *dword);
+static void smu_read(uint32_t *restrict NONNULL dword, unsigned int addr) {
+  dbg_printf("smu_read(%08x, %08x)\n", addr, *dword);
 
   WRPCI(addr, SMU_AMD_INDEX_REGISTER_ALT_F17H);
   RDPCI(*dword, SMU_AMD_DATA_REGISTER_ALT_F17H);
@@ -92,6 +98,12 @@ typedef uint32_t u32;
 typedef uint16_t u16;
 typedef uint8_t u8;
 
+enum refresh_mode {
+  REFRESH_MODE_NORMAL,
+  REFRESH_MODE_FGR,
+  REFRESH_MODE_MIXED,
+  REFRESH_MOE_PBONLY,
+};
 struct smu_timings {
   double MCLK;
   double MCLK_mts;
@@ -167,9 +179,96 @@ struct smu_timings {
   u32 tRFC1 : 16, tRFC2 : 16;
   u16 tRFCsb;
   double tRFCsb_ns;
+  u8 RxData, TxData, CtrlLine;
+  enum refresh_mode refresh_mode;
 #endif
   double tRFC_ns;
 };
+
+#if DDR4
+static void ddr4_timings(struct smu_timings *t) {
+  unsigned int value = {}, value2 = {};
+  smu_read(&value, 0x50260);
+  smu_read(&value2, 0x50264);
+
+  if (value != value2 && value == 0x21060138) {
+    value = value2;
+  }
+  t->tRFC1 = value & 0x3ff;
+  t->tRFC2 = (value >> 11) & 0x3ff;
+  t->tRFC4 = (value >> 22) & 0x1ff;
+}
+#endif
+
+static const char *display_refresh_mode(enum refresh_mode r) {
+  switch (r) {
+  case REFRESH_MODE_NORMAL:
+    return "Normal";
+  case REFRESH_MODE_MIXED:
+    return "Mixed";
+  case REFRESH_MODE_FGR:
+    return "FGR";
+  case REFRESH_MOE_PBONLY:
+    return "Per-Bank Only";
+  }
+}
+
+#if DDR5
+static void ddr5_timings(struct smu_timings *t) {
+  unsigned int value = {}, tRFC = {}, tRFCsb = {};
+  unsigned int tRFC_addresses[4] = {0x50260, 0x50264, 0x50268, 0x5026c};
+  for (int i = 0; i < sizeof(tRFC_addresses) / sizeof(*tRFC_addresses); i++) {
+    smu_read(&value, tRFC_addresses[i]);
+    if (value != 0x00c00138) {
+      tRFC = value;
+    }
+  }
+  t->tRFC1 = tRFC & 0xffff;
+  t->tRFC2 = (tRFC >> 16) & 0xffff;
+
+  smu_read(&value, 0x502a4);
+  t->tRDPRE = value & 0b11;
+  t->tWRPRE = (value >> 8) & 0b11;
+
+  unsigned int tRFCsb_addresses[4] = {0x502c0, 0x502c4, 0x502c8, 0x502cc};
+  for (int i = 0; i < sizeof(tRFCsb_addresses) / sizeof(*tRFCsb_addresses);
+       i++) {
+    smu_read(&value, tRFCsb_addresses[i]);
+    if (value != 0) {
+      tRFCsb = value;
+    }
+  }
+  t->tRFCsb = tRFCsb & 0xffff;
+  t->tRFCsb_ns = t->tRFCsb * 2000.0 / t->MCLK_mts;
+
+  smu_read(&value, 0x50284);
+  value = value & 0x3ff;
+  t->CtrlLine = value & 0b11;
+  t->TxData = (value >> 4) & 0b11;
+  t->RxData = (value >> 8) & 0b11;
+
+  enum refresh_mode refresh_mode = REFRESH_MODE_NORMAL;
+  smu_read(&value, 0x5012c);
+  // Fine-grained refresh -- tRFC2 is used
+  u8 FGR = (value >> 16) & 0b11;
+  bool per_bank_refresh = (value >> 1) & 0b1;
+
+  if (!per_bank_refresh) {
+    if (FGR) {
+      refresh_mode = REFRESH_MODE_FGR;
+    } else {
+      refresh_mode = REFRESH_MODE_NORMAL;
+    }
+  } else {
+    if (FGR) {
+      refresh_mode = REFRESH_MODE_MIXED;
+    } else {
+      refresh_mode = REFRESH_MOE_PBONLY;
+    }
+  }
+  t->refresh_mode = refresh_mode;
+}
+#endif
 
 static void smu_get_mem_timings(struct smu_timings *t) {
   u32 value, value2;
@@ -265,6 +364,10 @@ static void smu_get_mem_timings(struct smu_timings *t) {
   t->tPHYRDL = (value >> 16) & 0x7f;
   t->tPHYWRD = (value >> 24) & 0b11;
 
+  unsigned int tRFC_addresses[4] = {0x50260, 0x50264, 0x50268, 0x5026c};
+  for (int i = 0; i < sizeof(tRFC_addresses) / sizeof(*tRFC_addresses); i++) {
+    smu_read(&value, tRFC_addresses[i]);
+  }
   smu_read(&value, 0x50260);
   smu_read(&value2, 0x50264);
 
@@ -272,24 +375,11 @@ static void smu_get_mem_timings(struct smu_timings *t) {
     value = value2;
   }
 #if DDR4
-  t->tRFC1 = value & 0x3ff;
-  t->tRFC2 = (value >> 11) & 0x3ff;
-  t->tRFC4 = (value >> 22) & 0x1ff;
+  ddr4_timings(t);
 #elif DDR5
-  t->tRFC1 = value & 0xffff;
-  t->tRFC2 = (value >> 16) & 0xffff;
+  ddr5_timings(t);
 #endif
   t->tRFC_ns = t->tRFC1 * 2000.0 / t->MCLK_mts;
-
-#if DDR5
-  SMU_Read(&value, 0x502A4);
-  t->RD_Pre = value & 0b11;
-  t->WR_Pre = (value >> 8) & 0b11;
-
-  SMU_Read2(&value, 0x502c0);
-  t->tRFCsb = value & 0xffff;
-  t->tRFCsb_ns = t->tRFCsb * 2000.0 / t->MCLK_mts;
-#endif
 }
 
 static const char *bool_to_str(bool b) { return b ? "Enabled" : "Disabled"; }
@@ -298,7 +388,7 @@ static const char *bool_to_str(bool b) { return b ? "Enabled" : "Disabled"; }
 #define CLEAR_COLOR "\033[0m"
 #define B(x) BLUE_COLOR x CLEAR_COLOR
 
-static void display_info_cli(struct smu_timings *t) {
+static void display_info_cli(const struct smu_timings *const t) {
 
   printf("%-12s " B("%.0f MT/s") "\n", "Speed:", t->MCLK * 2);
   printf("%-12s " B("%-12s") " %-12s " B("%s") "\n",
@@ -336,8 +426,21 @@ static void display_info_cli(struct smu_timings *t) {
          "tRFC (ns):", t->tRFC_ns, "tCKE:", t->tCKE);
   printf("%-12s " B("%-12d") " %-12s " B("%-12d") "\n", "tRFC:", t->tRFC1,
          "tREFI:", t->tREFI);
-  printf("%-12s " B("%-12d") " %-12s " B("%-12.2f") "\n", "tRFC2:", t->tRFC2,
-         "tREFI (ns):", t->tREFI_ns);
+  printf("%-12s " B("%-12d")
+#if DDR4
+             " %-12s " B("%-12.2f")
+#elif DDR5
+             " %-12s " B("%s")
+#endif
+                 "\n",
+         "tRFC2:", t->tRFC2,
+#if DDR4
+         "tREFI (ns):", t->tREFI_ns
+#elif DDR5
+         "Ref. Mode:", display_refresh_mode(t->refresh_mode)
+#endif
+
+  );
   printf("%-12s " B("%-12d") " %-12s " B("%-12d") "\n",
 #if DDR4
          "tRFC4:", t->tRFC4,
@@ -356,10 +459,19 @@ static void display_info_cli(struct smu_timings *t) {
 #if DDR5
   printf("%-12s " B("%-12d") " %-12s " B("%-12d") "\n", "tRDPRE:", t->tRDPRE,
          "tWRPRE:", t->tWRPRE);
+  printf("%-12s " B("%d/%d/%d") "\n", "Nitro:", t->RxData, t->TxData,
+         t->CtrlLine);
 #endif
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+  if (argc > 1 && strcmp(argv[1], "-h") == 0) {
+    printf("usage: %s [-h]\n", argv[0]);
+    printf("  -h   display this help info\n");
+    printf("\n");
+    printf("root/sudo privileges are required for reading "
+           "and writing to raw I/O ports\n");
+  }
   uid_t uid = geteuid();
 
   if (uid != 0) {
@@ -369,8 +481,7 @@ int main(void) {
     int tmp_errno = errno;
     display_error("failed to set I/O privilege level: %s", strerror(tmp_errno));
   }
-  struct smu_timings t;
-  memset(&t, 0, sizeof(t));
+  struct smu_timings t = {};
 
   smu_get_mem_timings(&t);
   display_info_cli(&t);
