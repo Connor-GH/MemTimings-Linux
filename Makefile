@@ -1,8 +1,8 @@
 
 all: timings
 
-timings:
-	$(CC) -o $@ $@.c $(CFLAGS)
+timings: timings.c
+	$(CC) -o $@ $^ $(CFLAGS)
 
 clean:
 	rm -f timings

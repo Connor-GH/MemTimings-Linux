@@ -1,9 +1,9 @@
+![Logo](./logo.png "Logo")
 # MemTimings-Linux
 
-<img src="./logo.png" alt="logo" align="center">
-<img src="./pics/laptop.png" alt="MemTimings1" align="right">
+![Desktop](./pics/desktop.png "Desktop")
 
-Find your memory Timings of a Ryzen cpu under linux!
+## Find your memory Timings of a Ryzen cpu under linux!
 
 The program is currently in beta, so expect some bugs.
 

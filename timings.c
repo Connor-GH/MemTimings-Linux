@@ -361,10 +361,10 @@ static void smu_get_mem_timings(struct smu_timings *t) {
   t->tREFI_ns = t->tREFI * 2000.0 / t->MCLK_mts;
 
   smu_read(&value, 0x50234);
-  t->tMRD = value & 0b11111;
-  t->tMOD = (value >> 8) & 0b11111;
-  t->tMRDPDA = (value >> 16) & 0b11111;
-  t->tMODPDA = (value >> 24) & 0b11111;
+  t->tMRD = value & 0b111111;
+  t->tMOD = (value >> 8) & 0b111111;
+  t->tMRDPDA = (value >> 16) & 0b111111;
+  t->tMODPDA = (value >> 24) & 0b111111;
 
   smu_read(&value, 0x50250);
   t->tSTAG = (value >> 16) & 0x3ff;
@@ -373,9 +373,9 @@ static void smu_get_mem_timings(struct smu_timings *t) {
   t->tCKE = (value >> 24) & 0b11111;
 
   smu_read(&value, 0x50258);
-  t->tPHYWRL = (value >> 8) & 0x7f;
-  t->tPHYRDL = (value >> 16) & 0x7f;
-  t->tPHYWRD = (value >> 24) & 0b11;
+  t->tPHYWRL = (value >> 8) & 0xff;
+  t->tPHYRDL = (value >> 16) & 0xff;
+  t->tPHYWRD = (value >> 24) & 0b111;
 
   if (is_ddr4) {
     ddr4_timings(t);
@@ -453,7 +453,7 @@ static void display_info_cli(const struct smu_timings *const t) {
   printf("%-12s " B("%-12d") " %-12s " B("%-12d") "\n", "tMODPDA:", t->tMODPDA,
          "tMRDPDA:", t->tMRDPDA);
   printf("%-12s " B("%-12d") " %-12s " B("%-12d") "\n", "tPHYWRD:", t->tPHYWRD,
-         "tPHYDRL:", t->tPHYRDL);
+         "tPHYRDL:", t->tPHYRDL);
   printf("%-12s " B("%-12d") " %-12s " B("%-12s") "\n", "tPHYWRL:", t->tPHYWRL,
          "PowerDown:", bool_to_str(t->Power_Down_Mode));
 
