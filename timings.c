@@ -6,10 +6,6 @@
  *
  */
 
-#if !defined(DDR4) && !defined(DDR5)
-#define DDR4 1
-#define DDR5 0
-#endif
 #include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -104,6 +100,15 @@ enum refresh_mode {
   REFRESH_MODE_MIXED,
   REFRESH_MOE_PBONLY,
 };
+
+enum mem_type {
+  MEM_TYPE_DDR4 = 0b00,
+  MEM_TYPE_DDR5 = 0b01,
+  MEM_TYPE_LPDDR4 = 0b10,
+  MEM_TYPE_LPDDR5 = 0b11,
+  MEM_TYPE_UNKNOWN = -1,
+};
+
 struct smu_timings {
   double MCLK;
   double MCLK_mts;
@@ -168,24 +173,26 @@ struct smu_timings {
   u8 tPHYRDL;
   u8 tPHYWRL;
 
-#if DDR5
-  u8 tWRPRE;
-  u8 tRDPRE;
-#endif
+  enum mem_type kind;
 
-#if DDR4
-  u32 tRFC1 : 11, tRFC2 : 11, tRFC4 : 10;
-#elif DDR5
-  u32 tRFC1 : 16, tRFC2 : 16;
-  u16 tRFCsb;
-  double tRFCsb_ns;
-  u8 RxData, TxData, CtrlLine;
-  enum refresh_mode refresh_mode;
-#endif
+  union {
+    struct {
+      u32 tRFC1 : 11, tRFC2 : 11, tRFC4 : 10;
+    } d4;
+
+    struct {
+      u8 tWRPRE;
+      u8 tRDPRE;
+      u32 tRFC1 : 16, tRFC2 : 16;
+      u16 tRFCsb;
+      double tRFCsb_ns;
+      u8 RxData, TxData, CtrlLine;
+      enum refresh_mode refresh_mode;
+    } d5;
+  };
   double tRFC_ns;
 };
 
-#if DDR4
 static void ddr4_timings(struct smu_timings *t) {
   unsigned int value = {}, value2 = {};
   smu_read(&value, 0x50260);
@@ -194,11 +201,11 @@ static void ddr4_timings(struct smu_timings *t) {
   if (value != value2 && value == 0x21060138) {
     value = value2;
   }
-  t->tRFC1 = value & 0x3ff;
-  t->tRFC2 = (value >> 11) & 0x3ff;
-  t->tRFC4 = (value >> 22) & 0x1ff;
+  t->d4.tRFC1 = value & 0x3ff;
+  t->d4.tRFC2 = (value >> 11) & 0x3ff;
+  t->d4.tRFC4 = (value >> 22) & 0x1ff;
+  t->tRFC_ns = t->d4.tRFC1 * 2000.0 / t->MCLK_mts;
 }
-#endif
 
 static const char *display_refresh_mode(enum refresh_mode r) {
   switch (r) {
@@ -213,7 +220,6 @@ static const char *display_refresh_mode(enum refresh_mode r) {
   }
 }
 
-#if DDR5
 static void ddr5_timings(struct smu_timings *t) {
   unsigned int value = {}, tRFC = {}, tRFCsb = {};
   unsigned int tRFC_addresses[4] = {0x50260, 0x50264, 0x50268, 0x5026c};
@@ -223,12 +229,13 @@ static void ddr5_timings(struct smu_timings *t) {
       tRFC = value;
     }
   }
-  t->tRFC1 = tRFC & 0xffff;
-  t->tRFC2 = (tRFC >> 16) & 0xffff;
+  t->d5.tRFC1 = tRFC & 0xffff;
+  t->d5.tRFC2 = (tRFC >> 16) & 0xffff;
+  t->tRFC_ns = t->d5.tRFC1 * 2000.0 / t->MCLK_mts;
 
   smu_read(&value, 0x502a4);
-  t->tRDPRE = value & 0b11;
-  t->tWRPRE = (value >> 8) & 0b11;
+  t->d5.tRDPRE = value & 0b11;
+  t->d5.tWRPRE = (value >> 8) & 0b11;
 
   unsigned int tRFCsb_addresses[4] = {0x502c0, 0x502c4, 0x502c8, 0x502cc};
   for (int i = 0; i < sizeof(tRFCsb_addresses) / sizeof(*tRFCsb_addresses);
@@ -238,14 +245,14 @@ static void ddr5_timings(struct smu_timings *t) {
       tRFCsb = value;
     }
   }
-  t->tRFCsb = tRFCsb & 0xffff;
-  t->tRFCsb_ns = t->tRFCsb * 2000.0 / t->MCLK_mts;
+  t->d5.tRFCsb = tRFCsb & 0xffff;
+  t->d5.tRFCsb_ns = t->d5.tRFCsb * 2000.0 / t->MCLK_mts;
 
   smu_read(&value, 0x50284);
   value = value & 0x3ff;
-  t->CtrlLine = value & 0b11;
-  t->TxData = (value >> 4) & 0b11;
-  t->RxData = (value >> 8) & 0b11;
+  t->d5.CtrlLine = value & 0b11;
+  t->d5.TxData = (value >> 4) & 0b11;
+  t->d5.RxData = (value >> 8) & 0b11;
 
   enum refresh_mode refresh_mode = REFRESH_MODE_NORMAL;
   smu_read(&value, 0x5012c);
@@ -266,9 +273,8 @@ static void ddr5_timings(struct smu_timings *t) {
       refresh_mode = REFRESH_MOE_PBONLY;
     }
   }
-  t->refresh_mode = refresh_mode;
+  t->d5.refresh_mode = refresh_mode;
 }
-#endif
 
 static void smu_get_mem_timings(struct smu_timings *t) {
   u32 value, value2;
@@ -281,19 +287,26 @@ static void smu_get_mem_timings(struct smu_timings *t) {
   smu_read(&value2, 0x500D4);
   t->Bank_Group_Swap_Alt = ((value >> 4 & 0x7F)) || ((value2 >> 4 & 0x7F));
 
+  smu_read(&value, 0x50100);
+  t->kind = value & 0b11;
+  bool is_ddr5 = t->kind == MEM_TYPE_DDR5;
+  bool is_ddr4 = t->kind == MEM_TYPE_DDR4;
+
   smu_read(&value, 0x5012C);
   t->Power_Down_Mode = (value >> 28) & 0b1;
 
   smu_read(&value, 0x50200);
-#if DDR5
-  t->MCLK = (value & 0xffff);
-  t->Cmd_Rate = (value >> 17) & 0b1;
-  t->Gear_Down_Mode = (value >> 18) & 0b1;
-#elif DDR4
-  t->MCLK = (value & 0x7f) * 100 /* bclk */ / 3.0;
-  t->Cmd_Rate = (value >> 10) & 0b1;
-  t->Gear_Down_Mode = (value >> 11) & 0b1;
-#endif
+
+  if (is_ddr5) {
+    t->MCLK = (value & 0xffff);
+    t->Cmd_Rate = (value >> 17) & 0b1;
+    t->Gear_Down_Mode = (value >> 18) & 0b1;
+  } else if (is_ddr4) {
+    t->MCLK = (value & 0x7f) * 100 /* bclk */ / 3.0;
+    t->Cmd_Rate = (value >> 10) & 0b1;
+    t->Gear_Down_Mode = (value >> 11) & 0b1;
+  }
+
   t->MCLK_mts = t->MCLK * 2;
 
   smu_read(&value, 0x50204);
@@ -364,22 +377,11 @@ static void smu_get_mem_timings(struct smu_timings *t) {
   t->tPHYRDL = (value >> 16) & 0x7f;
   t->tPHYWRD = (value >> 24) & 0b11;
 
-  unsigned int tRFC_addresses[4] = {0x50260, 0x50264, 0x50268, 0x5026c};
-  for (int i = 0; i < sizeof(tRFC_addresses) / sizeof(*tRFC_addresses); i++) {
-    smu_read(&value, tRFC_addresses[i]);
+  if (is_ddr4) {
+    ddr4_timings(t);
+  } else if (is_ddr5) {
+    ddr5_timings(t);
   }
-  smu_read(&value, 0x50260);
-  smu_read(&value2, 0x50264);
-
-  if (value != value2 && value == 0x21060138) {
-    value = value2;
-  }
-#if DDR4
-  ddr4_timings(t);
-#elif DDR5
-  ddr5_timings(t);
-#endif
-  t->tRFC_ns = t->tRFC1 * 2000.0 / t->MCLK_mts;
 }
 
 static const char *bool_to_str(bool b) { return b ? "Enabled" : "Disabled"; }
@@ -424,30 +426,28 @@ static void display_info_cli(const struct smu_timings *const t) {
          "tWRWRDD:", t->tWRWRDD);
   printf("%-12s " B("%-12.3f") " %-12s " B("%-12d") "\n",
          "tRFC (ns):", t->tRFC_ns, "tCKE:", t->tCKE);
-  printf("%-12s " B("%-12d") " %-12s " B("%-12d") "\n", "tRFC:", t->tRFC1,
-         "tREFI:", t->tREFI);
-  printf("%-12s " B("%-12d")
-#if DDR4
-             " %-12s " B("%-12.2f")
-#elif DDR5
-             " %-12s " B("%s")
-#endif
-                 "\n",
-         "tRFC2:", t->tRFC2,
-#if DDR4
-         "tREFI (ns):", t->tREFI_ns
-#elif DDR5
-         "Ref. Mode:", display_refresh_mode(t->refresh_mode)
-#endif
-
-  );
   printf("%-12s " B("%-12d") " %-12s " B("%-12d") "\n",
-#if DDR4
-         "tRFC4:", t->tRFC4,
-#else
-         "tRFCsb:", t->tRFCsb,
-#endif
-         "tSTAG:", t->tSTAG);
+         "tRFC:", t->kind == MEM_TYPE_DDR5 ? t->d5.tRFC1 : t->d4.tRFC1,
+         "tREFI:", t->tREFI);
+
+  bool is_ddr5 = t->kind == MEM_TYPE_DDR5;
+  bool is_ddr4 = t->kind == MEM_TYPE_DDR4;
+
+  if (is_ddr5) {
+    printf("%-12s " B("%-12d") " %-12s " B("%s") "\n", "tRFC2:", t->d5.tRFC2,
+           "Ref. Mode:", display_refresh_mode(t->d5.refresh_mode));
+  } else if (is_ddr4) {
+    printf("%-12s " B("%-12d") " %-12s" B("%-12.2f") "\n",
+           "tRFC2:", t->d4.tRFC2, "tREFI (ns):", t->tREFI_ns);
+  }
+  if (is_ddr5) {
+    printf("%-12s " B("%-12d") " %-12s " B("%-12d") "\n",
+           "tRFCsb:", t->d5.tRFCsb, "tSTAG:", t->tSTAG);
+  } else if (is_ddr4) {
+    printf("%-12s " B("%-12d") " %-12s " B("%-12d") "\n", "tRFC4:", t->d4.tRFC4,
+           "tSTAG:", t->tSTAG);
+  }
+
   printf("%-12s " B("%-12d") " %-12s " B("%-12d") "\n", "tMOD:", t->tMOD,
          "tMRD:", t->tMRD);
   printf("%-12s " B("%-12d") " %-12s " B("%-12d") "\n", "tMODPDA:", t->tMODPDA,
@@ -456,12 +456,13 @@ static void display_info_cli(const struct smu_timings *const t) {
          "tPHYDRL:", t->tPHYRDL);
   printf("%-12s " B("%-12d") " %-12s " B("%-12s") "\n", "tPHYWRL:", t->tPHYWRL,
          "PowerDown:", bool_to_str(t->Power_Down_Mode));
-#if DDR5
-  printf("%-12s " B("%-12d") " %-12s " B("%-12d") "\n", "tRDPRE:", t->tRDPRE,
-         "tWRPRE:", t->tWRPRE);
-  printf("%-12s " B("%d/%d/%d") "\n", "Nitro:", t->RxData, t->TxData,
-         t->CtrlLine);
-#endif
+
+  if (is_ddr5) {
+    printf("%-12s " B("%-12d") " %-12s " B("%-12d") "\n",
+           "tRDPRE:", t->d5.tRDPRE, "tWRPRE:", t->d5.tWRPRE);
+    printf("%-12s " B("%d/%d/%d") "\n", "Nitro:", t->d5.RxData, t->d5.TxData,
+           t->d5.CtrlLine);
+  }
 }
 
 int main(int argc, char **argv) {
